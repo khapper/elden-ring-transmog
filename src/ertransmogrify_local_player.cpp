@@ -73,6 +73,31 @@ ertransmogrify::vfx::player_state_st ertransmogrify::local_player::get_local_pla
 
     auto [state, ignore_arms_transmog] = get_default_player_state(player);
 
+    // The grace menu gives this speffect to toggle Furled Finger's Trick-Mirror. Toggling is not
+    // idempotent, so if a cleared speffect were still visible on the next tick it would toggle back.
+    // As a guard, only act on the first tick the signal appears and ignore it until it's gone.
+    static bool toggle_signal_seen = false;
+    const bool toggle_signal =
+        players::has_speffect(player, ertransmogrify::vfx::trick_mirror_toggle_speffect_id);
+    if (toggle_signal) {
+        if (!toggle_signal_seen) {
+            ertransmogrify::shop::toggle_trick_mirror_flag(player);
+        }
+        players::clear_speffect(player, ertransmogrify::vfx::trick_mirror_toggle_speffect_id);
+    }
+    toggle_signal_seen = toggle_signal;
+
+    // The on/off state lives in a hidden flag item, so it's saved with the character. Keep the
+    // effect on the player in line with it, which also restores it after death or loading.
+    const bool mirror = ertransmogrify::shop::has_trick_mirror_flag(player);
+    const bool mirror_applied =
+        players::has_speffect(player, ertransmogrify::vfx::trick_mirror_effect_speffect_id);
+    if (mirror && !mirror_applied) {
+        players::apply_speffect(player, ertransmogrify::vfx::trick_mirror_effect_speffect_id, false);
+    } else if (!mirror && mirror_applied) {
+        players::clear_speffect(player, ertransmogrify::vfx::trick_mirror_effect_speffect_id);
+    }
+
     // When the local player is given this speffect, remove any transmogs
     if (players::has_speffect(player, ertransmogrify::vfx::undo_transmog_speffect_id)) {
         players::clear_speffect(player, ertransmogrify::vfx::undo_transmog_speffect_id);

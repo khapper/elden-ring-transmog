@@ -107,6 +107,13 @@ static er::paramdef::shop_lineup_param transmog_legs_shop_menu = {0};
 static unordered_map<int, er::paramdef::shop_lineup_param> transmog_shop_lineups;
 static unordered_map<int, er::paramdef::equip_param_goods_st> transmog_goods;
 
+// goodsType 13 is hidden from the inventory menu, same as the transmog goods
+static auto trick_mirror_flag_goods = er::paramdef::equip_param_goods_st{
+    .maxNum = 1,
+    .goodsType = 13,
+    .saleValue = 0,
+};
+
 static FindShopMenuResult *(*get_shop_menu)(FindShopMenuResult *result,
                                             unsigned char shop_type,
                                             int begin_id,
@@ -223,6 +230,13 @@ void get_equip_param_goods_detour(FindEquipParamGoodsResult *result, int id) {
             result->unknown = 3;
             return;
         }
+    }
+
+    if (id == shop::trick_mirror_flag_goods_id) {
+        result->id = id;
+        result->row = &trick_mirror_flag_goods;
+        result->unknown = 3;
+        return;
     }
 
     get_equip_param_goods(result, id);
@@ -571,6 +585,20 @@ void shop::remove_transmog_goods(signed char protector_category) {
             add_remove_item(shop::item_type_goods_begin, goods_id, -1);
         }
     }
+}
+
+bool shop::has_trick_mirror_flag(er::CS::PlayerIns *player) {
+    return player != nullptr &&
+           players::has_item_in_inventory(
+               player, (int)(item_type_goods_begin + trick_mirror_flag_goods_id));
+}
+
+void shop::toggle_trick_mirror_flag(er::CS::PlayerIns *player) {
+    if (player == nullptr || add_remove_item == nullptr) {
+        return;
+    }
+    add_remove_item(item_type_goods_begin, trick_mirror_flag_goods_id,
+                    has_trick_mirror_flag(player) ? -1 : +1);
 }
 
 void shop::add_transmog_good(unsigned long long protector_id) {

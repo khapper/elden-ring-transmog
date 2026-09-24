@@ -22,6 +22,25 @@ static constexpr long long transmog_vfx_speffect_end_id = 169500000;
 // transmogrification in some other way.
 static constexpr long long undo_transmog_speffect_id = 169999999;
 
+/**
+ * Signal SpEffect given by the grace menu to toggle Furled Finger's Trick-Mirror
+ */
+static constexpr long long trick_mirror_toggle_speffect_id = 169999998;
+
+/**
+ * SpEffect put on the local player while Furled Finger's Trick-Mirror is enabled. It carries the
+ * talisman's VFX row and HUD icon, but the ID itself is unknown to the base game. Judging by the net
+ * player note in get_speffect_param_detour, a player's SpEffects reach other clients, which can only
+ * apply those they have a param for. Other clients shouldn't apply this one, keeping it local.
+ */
+static constexpr long long trick_mirror_effect_speffect_id = 169999997;
+
+/**
+ * VFX row and HUD icon of the real talisman's SpEffect 360800
+ */
+static constexpr int trick_mirror_vfx_id = 360800;
+static constexpr int trick_mirror_icon_id = 20297;
+
 static constexpr long long head_protector_offset = 0;
 static constexpr long long chest_protector_offset = 100;
 static constexpr long long arms_protector_offset = 200;

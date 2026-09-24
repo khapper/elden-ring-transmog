@@ -7,6 +7,7 @@
 
 #include <spdlog/spdlog.h>
 #include <elden-x/chr/world_chr_man.hpp>
+#include <elden-x/chr/player.hpp>
 #include <elden-x/params.hpp>
 #include <elden-x/sound.hpp>
 #include <elden-x/task.hpp>
@@ -14,6 +15,8 @@
 
 #include <chrono>
 #include <map>
+#include <mutex>
+#include <shared_mutex>
 #include <random>
 
 #define WIN32_LEAN_AND_MEAN
@@ -96,6 +99,14 @@ static auto dummy_speffect_param = er::paramdef::sp_effect_param_st{
     .effectTargetSelfTarget = true,
 };
 
+// Same as the dummy SpEffect, but carrying Furled Finger's Trick-Mirror VFX and HUD icon
+static auto trick_mirror_speffect_param = [] {
+    auto param = dummy_speffect_param;
+    param.vfxId = ertransmogrify::vfx::trick_mirror_vfx_id;
+    param.iconId = ertransmogrify::vfx::trick_mirror_icon_id;
+    return param;
+}();
+
 // The category used by transformation effects in the vanilla game (dragon forms and such)
 static constexpr unsigned char vfx_play_category_transmog = 8;
 
@@ -131,6 +142,102 @@ static auto player_contexts = span{player_context_buffer->data(), 0};
 // params.
 static map<unsigned int, er::paramdef::sp_effect_vfx_param_st> patched_vfx_params;
 
+// Copies of the wearer's protector rows whose material fields are taken from the
+// protector shown by transmog, so hit sounds, sparks and footsteps match what you
+// see instead of what you wear.
+//
+// Entries are never erased: the game may hold a pointer to a param row, so when
+// transmog is turned off we restore the original values in place.
+static map<int, er::paramdef::equip_param_protector_st> patched_protector_params;
+
+// The detour is called from game threads while the map is updated from the game
+// loop, so structural changes must not race with lookups.
+static shared_mutex patched_protector_mutex;
+
+static void copy_materials(er::paramdef::equip_param_protector_st &dst,
+                           const er::paramdef::equip_param_protector_st &src) {
+    dst.defenseMaterial1 = src.defenseMaterial1;
+    dst.defenseMaterial_Weak1 = src.defenseMaterial_Weak1;
+    dst.defenseMaterial_Weak2 = src.defenseMaterial_Weak2;
+    dst.defenseMaterialSfx1 = src.defenseMaterialSfx1;
+    dst.defenseMaterialSfx2 = src.defenseMaterialSfx2;
+    dst.defenseMaterialSfx_Weak1 = src.defenseMaterialSfx_Weak1;
+    dst.defenseMaterialSfx_Weak2 = src.defenseMaterialSfx_Weak2;
+    dst.defenseMaterialVariationValue = src.defenseMaterialVariationValue;
+    dst.defenseMaterialVariationValue_Weak = src.defenseMaterialVariationValue_Weak;
+    dst.footMaterialSe = src.footMaterialSe;
+    dst.autoFootEffectDecalBaseId1 = src.autoFootEffectDecalBaseId1;
+    dst.autoFootEffectDecalBaseId2 = src.autoFootEffectDecalBaseId2;
+    dst.autoFootEffectDecalBaseId3 = src.autoFootEffectDecalBaseId3;
+}
+
+/**
+ * Rebuild the material overrides for the local player. Called every frame, but
+ * only does work when the equipped set or the transmog selection changed.
+ */
+static void update_material_overrides(player_context_st &context) {
+    auto player = context.player;
+    if (player == nullptr || player->game_data == nullptr) {
+        return;
+    }
+
+    auto &gear = player->game_data->equip_game_data.chr_asm.gear_param_ids;
+
+    const int worn[4] = {gear.head_protector_id, gear.chest_protector_id,
+                         gear.arms_protector_id, gear.legs_protector_id};
+    const int shown[4] = {context.state.head_protector_id, context.state.chest_protector_id,
+                          context.state.arms_protector_id, context.state.legs_protector_id};
+
+    static int last_worn[4] = {-2, -2, -2, -2};
+    static int last_shown[4] = {-2, -2, -2, -2};
+    bool changed = false;
+    for (int i = 0; i < 4; i++) {
+        if (worn[i] != last_worn[i] || shown[i] != last_shown[i]) {
+            changed = true;
+        }
+    }
+    if (!changed) {
+        return;
+    }
+    for (int i = 0; i < 4; i++) {
+        last_worn[i] = worn[i];
+        last_shown[i] = shown[i];
+    }
+
+    unique_lock lock(patched_protector_mutex);
+
+    // Reset every existing copy to its own materials first. Without this, a piece
+    // that was transmogged and then taken off would keep the disguise's sound
+    // forever, since the loop below only ever visits currently worn slots.
+    for (auto &[protector_id, row] : patched_protector_params) {
+        auto vanilla = er::param::EquipParamProtector[protector_id];
+        if (vanilla.second) {
+            copy_materials(row, vanilla.first);
+        }
+    }
+
+    // Then apply the disguise's materials to whatever is worn right now
+    for (int i = 0; i < 4; i++) {
+        if (worn[i] <= 0 || shown[i] <= 0 || shown[i] == worn[i]) {
+            continue;
+        }
+
+        auto worn_row = er::param::EquipParamProtector[worn[i]];
+        auto shown_row = er::param::EquipParamProtector[shown[i]];
+        // operator[] hands back a zeroed dummy row for unknown ids, which would
+        // wipe the materials instead of changing them
+        if (!worn_row.second || !shown_row.second) {
+            continue;
+        }
+
+        auto it = patched_protector_params.find(worn[i]);
+        if (it == patched_protector_params.end()) {
+            it = patched_protector_params.emplace(worn[i], worn_row.first).first;
+        }
+        copy_materials(it->second, shown_row.first);
+    }
+}
+
 /**
  * Utility to alias fake EquipParamProtector IDs to armor pieces chosen by the player
  */
@@ -157,6 +264,12 @@ static void get_equip_param_protector_detour(equip_param_protector_result_st *re
                                              unsigned int id) {
     get_equip_param_protector(result, id);
     if (result->row != nullptr) {
+        // Swap in the material fields of the protector shown by transmog
+        shared_lock lock(patched_protector_mutex);
+        auto patched = patched_protector_params.find(static_cast<int>(id));
+        if (patched != patched_protector_params.end()) {
+            result->row = &patched->second;
+        }
         return;
     }
 
@@ -200,9 +313,17 @@ static void get_speffect_param_detour(speffect_param_result_st *result, unsigned
         }
     }
 
-    if (id == ertransmogrify::vfx::undo_transmog_speffect_id) {
+    if (id == ertransmogrify::vfx::undo_transmog_speffect_id ||
+        id == ertransmogrify::vfx::trick_mirror_toggle_speffect_id) {
         result->id = id;
         result->row = &dummy_speffect_param;
+        result->unkc = speffect_param_result_st::unkc_en::unk;
+        return;
+    }
+
+    if (id == ertransmogrify::vfx::trick_mirror_effect_speffect_id) {
+        result->id = id;
+        result->row = &trick_mirror_speffect_param;
         result->unkc = speffect_param_result_st::unkc_en::unk;
         return;
     }
@@ -454,7 +575,15 @@ class update_transmog_vfx_task : public er::CS::CSEzTask {
 
             context.state = new_state;
 
+            if (index == 0) {
+                update_material_overrides(context);
+            }
+
             return true;
+        }
+
+        if (index == 0) {
+            update_material_overrides(context);
         }
 
         return false;

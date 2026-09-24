@@ -2,6 +2,8 @@
 
 #include <map>
 
+#include <elden-x/chr/player.hpp>
+
 namespace ertransmogrify {
 namespace shop {
 static constexpr unsigned int item_type_protector_begin = 0x10000000;
@@ -24,6 +26,12 @@ static constexpr long long transmog_legs_shop_menu_id = 4300000;
 static constexpr long long transmog_shop_max_size = 100000;
 
 /**
+ * Hidden flag item marking that Furled Finger's Trick-Mirror is enabled. Deliberately placed just
+ * past the transmog goods range, so none of the transmog bookkeeping mistakes it for armor.
+ */
+static constexpr long long trick_mirror_flag_goods_id = 7000000;
+
+/**
  * DLC transformations. These protectors have no item names or icons, so they need an explicit
  * mapping to the goods that hold this data.
  */
@@ -44,6 +52,16 @@ void remove_transmog_goods(signed char protector_category = -1);
  * Add a transmog good to the player's inventory
  */
 void add_transmog_good(unsigned long long protector_id);
+
+/**
+ * True if the Trick-Mirror flag item is in the player's inventory
+ */
+bool has_trick_mirror_flag(er::CS::PlayerIns *player);
+
+/**
+ * Add the Trick-Mirror flag item if it's missing, or remove it if it's present
+ */
+void toggle_trick_mirror_flag(er::CS::PlayerIns *player);
 
 inline bool is_invisible_protector_id(long long protector_id) {
     return protector_id == bare_head_protector_id || protector_id == bare_chest_protector_id ||

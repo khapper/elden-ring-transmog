@@ -32,6 +32,7 @@ static constexpr int event_text_for_talk_transmog_chest = 69000011;
 static constexpr int event_text_for_talk_transmog_arms = 69000012;
 static constexpr int event_text_for_talk_transmog_legs = 69000013;
 static constexpr int event_text_for_talk_undo_transmog = 69000020;
+static constexpr int event_text_for_talk_trick_mirror_toggle = 69000030;
 static constexpr int event_text_for_talk_cancel = 15000372;
 static constexpr int event_text_for_talk_sort_chest = 15000395;
 static constexpr int menu_text_transmog_head = 690000;

@@ -66,6 +66,8 @@ const wchar_t *get_message_detour(CS::MsgRepository *msg_repository,
                     return transmog_messages.transmog_legs.c_str();
                 case msg::event_text_for_talk_undo_transmog:
                     return transmog_messages.undo_transmog.c_str();
+                case msg::event_text_for_talk_trick_mirror_toggle:
+                    return L"Toggle Furled Finger's Trick-Mirror";
             }
             break;
 

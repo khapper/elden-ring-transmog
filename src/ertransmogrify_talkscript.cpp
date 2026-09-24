@@ -38,12 +38,16 @@ auto transmog_legs_menu_state = open_regular_shop_state{
 auto undo_transmog_state =
     give_speffect_to_player_state{vfx::undo_transmog_speffect_id, &transmog_menu_state};
 
+auto trick_mirror_state =
+    give_speffect_to_player_state{vfx::trick_mirror_toggle_speffect_id, &transmog_menu_state};
+
 talkscript_menu_state transmog_menu_state = {{
     {1, ertransmogrify::msg::event_text_for_talk_transmog_head, &transmog_head_menu_state},
     {2, ertransmogrify::msg::event_text_for_talk_transmog_chest, &transmog_chest_menu_state},
     {3, ertransmogrify::msg::event_text_for_talk_transmog_arms, &transmog_arms_menu_state},
     {4, ertransmogrify::msg::event_text_for_talk_transmog_legs, &transmog_legs_menu_state},
     {5, ertransmogrify::msg::event_text_for_talk_undo_transmog, &undo_transmog_state},
+    {6, ertransmogrify::msg::event_text_for_talk_trick_mirror_toggle, &trick_mirror_state},
     {99, ertransmogrify::msg::event_text_for_talk_cancel, nullptr, true},
 }};
 
