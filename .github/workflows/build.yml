@@ -1,0 +1,61 @@
+name: Build DLL
+
+# Собирает ertransmogrify.dll на раннере с Windows и MSVC.
+# Готовый файл забирается со вкладки Actions -> нужный запуск -> Artifacts.
+#
+# Класть в репозиторий как .github/workflows/build.yml
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:        # позволяет запускать вручную кнопкой
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Забрать исходники
+        uses: actions/checkout@v4
+        # сабмодулей в проекте нет, зависимости тянет CMake через FetchContent
+
+      - name: Версия CMake
+        run: cmake --version
+        # проекту нужна 3.28.1 или новее; на windows-latest она есть
+
+      # Запасной вариант, если CMake на раннере окажется слишком новым и
+      # упрётся во что-то ещё. Тогда раскомментировать этот шаг и закомментировать
+      # флаг CMAKE_POLICY_VERSION_MINIMUM ниже: CMake 3.31 ещё принимает старые
+      # cmake_minimum_required, просто ругаясь предупреждением.
+      # - name: Поставить CMake 3.31
+      #   uses: jwlawson/actions-setup-cmake@v2
+      #   with:
+      #     cmake-version: '3.31.6'
+
+      - name: Конфигурация
+        # Кавычки обязательны: без них PowerShell рвёт аргумент по точке и CMake
+        # получает значение "3" вместо "3.5".
+        #
+        # Сам флаг нужен из-за minhook (зависимость elden-x): он объявляет
+        # cmake_minimum_required ниже 3.5, а поддержку таких версий из свежих
+        # CMake убрали.
+        run: cmake -B build -A x64 "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+
+      - name: Сборка
+        run: cmake --build build --config Release
+
+      - name: Что получилось
+        run: dir build\Release
+        shell: cmd
+
+      - name: Выложить артефакт
+        uses: actions/upload-artifact@v4
+        with:
+          name: ertransmogrify-v3
+          path: |
+            build/Release/ertransmogrify.dll
+            build/Release/ertransmogrify.ini
+            build/Release/LICENSE.txt
+          if-no-files-found: error
+          retention-days: 30
